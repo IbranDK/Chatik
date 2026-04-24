@@ -19,27 +19,37 @@ namespace ProjectClient
             _tcpClient = new TcpClient();
             _tcpClient.Connect(host, port);
 
-            NetworkStream stream = _tcpClient.GetStream();
+            var stream = _tcpClient.GetStream();
             _writer = new StreamWriter(stream) { AutoFlush = true };
             _reader = new StreamReader(stream);
 
-            // Регистрация никнейма
             _writer.WriteLine($"/join {nickname}");
 
-            // Фоновый поток чтения
-            Thread readThread = new Thread(ReadLoop);
-            readThread.IsBackground = true;
-            readThread.Start();
+            new Thread(ReadLoop)
+            {
+                IsBackground = true
+            }.Start();
         }
 
         private void ReadLoop()
         {
-            while ((_reader != null) && (_tcpClient.Connected))
+            try
             {
-                var line = _reader.ReadLine();
-                if (line == null) break;
+                while (_tcpClient?.Connected == true)
+                {
+                    var line = _reader.ReadLine();
+                    if (line == null) break;
 
-                OnMessageReceived?.Invoke(line);
+                    OnMessageReceived?.Invoke(line);
+                }
+            }
+            catch
+            {
+                // соединение потеряно
+            }
+            finally
+            {
+                OnDisconnected?.Invoke();
             }
         }
 
@@ -51,13 +61,17 @@ namespace ProjectClient
             }
             catch
             {
-                // соединение потеряно
+                OnDisconnected?.Invoke();
             }
         }
 
         public void Disconnect()
         {
-            _tcpClient?.Close();
+            try
+            {
+                _tcpClient?.Close();
+            }
+            catch { }
         }
     }
 }
