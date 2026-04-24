@@ -73,7 +73,6 @@ namespace ProjectServer
                     tcpClient.Close();
                     return;
                 }
-
                 nickname = joinLine.Substring(6).Trim();
 
                 lock (_lockObj)
@@ -151,20 +150,19 @@ namespace ProjectServer
 
         private void Broadcast(string message, string exclude)
         {
+            List<StreamWriter> clientsCopy;
             lock (_lockObj)
             {
-                foreach (var kvp in _clients)
+                clientsCopy = new List<StreamWriter>(_clients.Values);
+            }
+
+            foreach (var writer in clientsCopy)
+            {
+                try
                 {
-                    if (kvp.Key == exclude) continue;
-                    try
-                    {
-                        kvp.Value.WriteLine(message);
-                    }
-                    catch
-                    {
-                        // клиент уже отвалился
-                    }
+                    writer.WriteLine(message);
                 }
+                catch { }
             }
         }
     }
