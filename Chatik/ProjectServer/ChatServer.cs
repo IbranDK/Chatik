@@ -62,17 +62,17 @@ namespace ProjectServer
 
             try
             {
-                NetworkStream stream = tcpClient.GetStream();
+                var stream = tcpClient.GetStream();
                 reader = new StreamReader(stream);
                 writer = new StreamWriter(stream) { AutoFlush = true };
 
-                // Первое сообщение — это /join НИК
-                string joinLine = reader.ReadLine();
+                var joinLine = reader.ReadLine();
                 if (joinLine == null || !joinLine.StartsWith("/join "))
                 {
                     tcpClient.Close();
                     return;
                 }
+
                 nickname = joinLine.Substring(6).Trim();
 
                 lock (_lockObj)
@@ -88,57 +88,19 @@ namespace ProjectServer
                 }
 
                 OnClientConnected?.Invoke(nickname);
-                Broadcast($"[SERVER]: {nickname} вошёл в чат.", exclude: nickname);
+                Broadcast($"[SERVER]: {nickname} вошёл в чат.", nickname);
 
-                // Цикл чтения сообщений
                 while (true)
                 {
-                    string line = reader.ReadLine();
+                    var line = reader.ReadLine();
                     if (line == null) break;
 
-                    if (line == "/users")
-                    {
-                        // Отправить список юзеров только этому клиенту
-                        lock (_lockObj)
-                        {
-                            string userList = "[SERVER]: Онлайн: " + string.Join(", ", _clients.Keys);
-                            writer.WriteLine(userList);
-                        }
-                    }
-                    else if (line.StartsWith("/pm "))
-                    {
-                        // Личное сообщение: /pm Боб Привет
-                        var parts = line.Substring(4).Split(' ', 2);
-                        if (parts.Length == 2)
-                        {
-                            string target = parts[0];
-                            string pmText = parts[1];
-                            lock (_lockObj)
-                            {
-                                if (_clients.TryGetValue(target, out var targetWriter))
-                                {
-                                    targetWriter.WriteLine($"[PM от {nickname}]: {pmText}");
-                                    writer.WriteLine($"[PM для {target}]: {pmText}");
-                                }
-                                else
-                                {
-                                    writer.WriteLine($"[SERVER]: Пользователь {target} не найден.");
-                                }
-                            }
-                        }
-                    }
-                    else
-                    {
-                        // Обычное сообщение
-                        string msg = $"{nickname}:{line}";
-                        OnMessageReceived?.Invoke(nickname, line);
-                        Broadcast(msg, exclude: nickname);
-                    }
+                    HandleCommand(line, nickname, writer);
                 }
             }
             catch
             {
-                // клиент внезапно отключился — это нормально
+                // клиент отвалился
             }
             finally
             {
@@ -148,13 +110,61 @@ namespace ProjectServer
                     {
                         _clients.Remove(nickname);
                     }
+
                     OnClientDisconnected?.Invoke(nickname);
-                    Broadcast($"[SERVER]: {nickname} покинул чат.", exclude: null);
+                    Broadcast($"[SERVER]: {nickname} покинул чат.", null);
                 }
+
+                reader?.Dispose();
+                writer?.Dispose();
                 tcpClient.Close();
             }
         }
+        private void HandleCommand(string line, string nickname, StreamWriter writer)
+        {
+            if (line == "/users")
+            {
+                List<string> users;
+                lock (_lockObj)
+                {
+                    users = new List<string>(_clients.Keys);
+                }
 
+                writer.WriteLine("[SERVER]: Онлайн: " + string.Join(", ", users));
+                return;
+            }
+
+            if (line.StartsWith("/pm "))
+            {
+                var parts = line.Substring(4).Split(' ', 2);
+                if (parts.Length < 2) return;
+
+                var target = parts[0];
+                var message = parts[1];
+
+                StreamWriter targetWriter = null;
+
+                lock (_lockObj)
+                {
+                    _clients.TryGetValue(target, out targetWriter);
+                }
+
+                if (targetWriter != null)
+                {
+                    targetWriter.WriteLine($"[PM от {nickname}]: {message}");
+                    writer.WriteLine($"[PM для {target}]: {message}");
+                }
+                else
+                {
+                    writer.WriteLine($"[SERVER]: Пользователь {target} не найден.");
+                }
+
+                return;
+            }
+
+            OnMessageReceived?.Invoke(nickname, line);
+            Broadcast($"{nickname}: {line}", nickname);
+        }
         private void Broadcast(string message, string exclude)
         {
             List<StreamWriter> clientsCopy;
