@@ -77,6 +77,13 @@ namespace ProjectServer
 
                 lock (_lockObj)
                 {
+                    if (string.IsNullOrWhiteSpace(nickname) || _clients.ContainsKey(nickname))
+                    {
+                        writer.WriteLine("[SERVER]: Invalid or duplicate nickname.");
+                        tcpClient.Close();
+                        return;
+                    }
+
                     _clients[nickname] = writer;
                 }
 
