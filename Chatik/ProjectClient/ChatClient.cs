@@ -34,22 +34,12 @@ namespace ProjectClient
 
         private void ReadLoop()
         {
-            try
+            while ((_reader != null) && (_tcpClient.Connected))
             {
-                while (true)
-                {
-                    string line = _reader.ReadLine();
-                    if (line == null) break;
-                    OnMessageReceived?.Invoke(line);
-                }
-            }
-            catch
-            {
-                // соединение разорвано
-            }
-            finally
-            {
-                OnDisconnected?.Invoke();
+                var line = _reader.ReadLine();
+                if (line == null) break;
+
+                OnMessageReceived?.Invoke(line);
             }
         }
 
